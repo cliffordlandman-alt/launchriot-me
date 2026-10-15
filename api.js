@@ -17,7 +17,8 @@ async function api(path,opt={}){const h={...(opt.body?{'Content-Type':'applicati
 const arr=x=>Array.isArray(x)?x:(x&&(x.items||x.data||x.results||x.providers||x.drafts||x.tasks))||[];
 const pick=(o,...k)=>{for(const x of k)if(o&&o[x]!=null&&o[x]!=='')return o[x];return ''};
 const st=p=>API.status.find(c=>c.provider==p)||{};
-const isCon=p=>(st(p).state||st(p).status)=='connected';
+const gAcct=em=>{em=String(em).toLowerCase();for(const p of API.status){if(p.provider!='google')continue;const a=(p.accounts||[]).find(x=>String(x.email||'').toLowerCase()==em);if(a)return a;if(!p.accounts&&String(p.email||'').toLowerCase()==em)return p}return {}};
+const isCon=p=>(p=='google'&&API.status.some(x=>x.provider=='google'&&((x.accounts||[]).some(a=>a.state=='connected'))))||(st(p).state||st(p).status)=='connected';
 function ago(t){if(!t)return 'never';const m=Math.round((Date.now()-new Date(t))/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'}
 const dubai=iso=>{if(!iso)return{d:'',t:''};const x=new Date(iso),p=k=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',...k}).format(x);return{d:p({year:'numeric',month:'2-digit',day:'2-digit'}),t:p({hour:'2-digit',minute:'2-digit',hour12:false})}};
 // ---- login ----
@@ -39,7 +40,7 @@ const thr=m=>pick(m,'thread_id','threadId','conversation_id');
 function replyOf(m,se,all){if(m.replied===true)return{at:pick(m,'replied_at'),by:m.replied_by};const t0=pick(m,'received_at'),T=thr(m),me=String(se||'').toLowerCase();if(!me||!T)return null;
  const r=all.find(x=>x!==m&&fromEmail(x)==me&&thr(x)==T&&(!t0||new Date(pick(x,'received_at'))>new Date(t0)));return r?{at:pick(r,'received_at'),by:me}:null}
 const person=x=>x?(typeof x=='object'?{name:x.name||x.email||'',email:x.email||''}:{name:String(x),email:String(x)}):{name:'',email:''};
-const mailMap=m=>({id:'rm'+m.id,rid:m.id,src:UI_SRC[m.source]||'gmail',from:m.from_name?m.from_name+' <'+m.from+'>':pick(m,'from'),subj:pick(m,'subject')||'(no subject)',sum:pick(m,'body_summary','snippet'),pri:m.priority=='high'?'High':'Normal',importance:+m.importance||0,reasons:m.importance_reasons||[],unread:!!m.unread,needs_reply:!!m.flagged,is_cc:!!m.is_cc,thread_id:m.thread_id,at:m.received_at,reply:'',st:'Pending'});
+const mailMap=m=>({id:'rm'+m.id,rid:m.id,src:UI_SRC[m.source]||'gmail',from:m.from_name?m.from_name+' <'+m.from+'>':pick(m,'from'),subj:pick(m,'subject')||'(no subject)',sum:pick(m,'body_summary','snippet'),pri:m.priority=='high'?'High':'Normal',importance:+m.importance||0,reasons:m.importance_reasons||[],unread:!!m.unread,needs_reply:!!m.flagged,account:m.account||'',is_cc:!!m.is_cc,thread_id:m.thread_id,at:m.received_at,reply:'',st:'Pending'});
 const taskMap=(m,closed)=>{const a=person((m.assigned_staff||[])[0]||m.staff_sender);return{id:'rs'+m.id,rid:m.id,staff:a.name||'Unassigned',staff_email:a.email,summary:pick(m,'body_summary','snippet','subject'),subj:pick(m,'subject'),from:pick(m,'from_name','from'),at:m.received_at,auto:(closed||m.replied||m.task_status=='closed')?1:0,replied_at:pick(m,'replied_at'),replied_by:m.replied_by||'',st:'Open'}};
 async function loadData(){const soft=p=>api(p).catch(e=>{if(e.status==401)throw e;return null});
  const [prof,sets,drafts]=await Promise.all([soft('/profile'),soft('/settings'),soft('/drafts')]);
@@ -68,12 +69,12 @@ view=function(t){
  if(t=='connections'&&API.authed){const card=p=>{const c=st(p),s=c.state||c.status||'not_configured';
    const lab={connected:'Connected',not_connected:'Not connected yet',not_configured:'Not set up yet',error:'Error'}[s]||s;
    return `<div class="card vivid"><b>${PROV[p].n}</b><p>${pill(lab)}</p>${c.email?`<div class="muted">${esc(c.email)}</div>`:''}<div class="muted">Last synced: ${ago(c.last_sync)}</div>${c.last_error?`<div class="muted" style="color:#b00">${esc(c.last_error)}</div>`:''}<div class="toolbar" style="margin-top:8px">${s=='connected'?`<button class="btn sm" onclick="sync('${PROV[p].k[0]}')">🔄 Sync now</button>`:s=='not_configured'?`<span class="muted">Your LaunchRiot setup will enable this.</span>`:`<button class="btn sm" onclick="apiConnect('${p}')">Connect</button>`}</div></div>`};
-  const acct=em=>{const c=API.status.find(x=>x.provider=='google'&&String(x.email||'').toLowerCase()==em)||{},s=c.state||c.status||'not_connected',lab={connected:'Connected',not_connected:'Not connected yet',not_configured:'Not set up yet',error:'Error'}[s]||s;
+  const acct=em=>{const c=gAcct(em),s=(window.__justConnected&&window.__justConnected.toLowerCase()==em&&!c.state)?'connected':(c.state||c.status||'not_connected'),lab={connected:'Connected',not_connected:'Not connected yet',not_configured:'Not set up yet',error:'Error'}[s]||s;
    return `<div class="card vivid"><b>Google · ${em}</b><p>${pill(lab)}</p><div class="muted">Gmail &amp; Calendar · Last synced: ${ago(c.last_sync)}</div>${c.last_error?`<div class="muted" style="color:#b00">${esc(c.last_error)}</div>`:''}<div class="toolbar" style="margin-top:8px">${s=='connected'?`<button class="btn sm" onclick="sync('gmail')">🔄 Sync now</button>`:s=='not_configured'?`<span class="muted">Google sign-in is not set up yet.</span>`:`<button class="btn sm" onclick="apiConnect('google','${em}')">Connect</button>`}</div></div>`};
   return `<h2>Connections</h2><p class="muted">${syncLine()} · Outbound delivery is off: nothing is ever sent from this workspace.</p><div class="grid">${ACCOUNTS.map(acct).join('')}<div class="card vivid"><b>WhatsApp Business</b><p>${pill('Not set up yet')}</p><span class="muted">Your LaunchRiot setup will enable this.</span></div></div><p>${API.user&&API.user.email?esc(API.user.email)+' · ':''}<a href="#" onclick="logout();return false" class="muted">Sign out</a></p>`}
  return _view(t)};
 function syncLine(){const t=API.status.map(c=>c.last_sync).filter(Boolean).sort().pop();return API.authed?'Last synced '+ago(t):''}
-window.apiConnect=(p,em)=>{location.href=API_BASE+'/oauth/'+p+'/start'+(em?'?login_hint='+encodeURIComponent(em):'')};
+window.apiConnect=(p,em)=>{const base=location.hostname=='me.launchriot.online'?'https://me.launchriot.online/':'https://cliffordlandman-alt.github.io/launchriot-me/';location.href=API_BASE+'/oauth/'+p+'/start?'+(em?'login_hint='+encodeURIComponent(em)+'&':'')+'return_to='+encodeURIComponent(base)};
 const _sync=window.sync;
 window.sync=async k=>{const p=KEY2PROV[k];if(!API.authed||!isCon(p))return _sync(k);toast('Syncing…');try{await api('/sync',{method:'POST'});setTimeout(refresh,4000);toast('Sync started')}catch(e){toast('Sync failed ('+(e.status||'offline')+')')}};
 const _appr=window.appr;
@@ -81,6 +82,7 @@ window.appr=async(id,s)=>{const a=D.approvals.find(a=>a.id==id);if(a&&a.remote){
 const _apprTbl=apprTbl;apprTbl=function(){return _apprTbl().replace(/appr\((ra_[^,]+),/g,"appr('$1',")};
 const _render=render;render=function(){_render();const tg=document.querySelector('.content .toolbar .tag');if(tg)tg.textContent=API.authed?('● Live · '+syncLine()):API.online?'Not signed in · saved in this browser':'Offline · saved in this browser';
  if(!API.authed&&API.online&&!document.getElementById('wh-signin')){const b=document.createElement('button');b.id='wh-signin';b.className='btn sm';b.textContent='Sign in';b.onclick=()=>showLogin();const tb=document.querySelector('.content .toolbar');tb&&tb.appendChild(b)}};
-(function(){const h=location.hash,i=h.indexOf('?');if(i>-1){const q=new URLSearchParams(h.slice(i+1));history.replaceState(null,'',location.pathname+location.search+h.slice(0,i));const c=q.get('connected'),er=q.get('error');setTimeout(()=>toast(c?(PROV[c]?PROV[c].n:c)+' connected':er?'Connection failed: '+er:''),300)}})();
+(function(){const q=new URLSearchParams(location.search),c=q.get('connected'),er=q.get('connect_error'),em=q.get('email');if(c||er||q.has('email')){history.replaceState(null,'',location.pathname+location.hash.split('?')[0]);
+ if(c){window.__justConnected=em||'';setTimeout(()=>{toast((em?em+' ':'')+'connected to '+(PROV[c]?PROV[c].n:c));API.authed&&refresh()},400)}else if(er)setTimeout(()=>toast('Connection failed: '+er),400)}})();
 removeEventListener('hashchange',_render);addEventListener('hashchange',()=>render());
 render();boot();setInterval(refresh,REFRESH_MS);
