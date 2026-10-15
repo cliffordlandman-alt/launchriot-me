@@ -26,13 +26,21 @@
  const FK='lr-folders-v1',FOLDERS=['Priority','Clients','Suppliers','Subscriptions','Receipts & Payments','Notifications','Other'];
  const ov=()=>{try{return JSON.parse(localStorage.getItem(FK)||'{}')}catch(e){return{}}};
  const sender=m=>{try{return fromEmail(m)||String(m.from||'').toLowerCase()}catch(e){return String(m.from||'').toLowerCase()}};
- const RCPT=/(receipt|invoice|payment (received|confirmation|successful)|payment of|paid|statement|your order|order confirmation|billing|transaction|refund|subscription renewal|tax invoice)/i;
- const SUBS=/(unsubscribe|newsletter|digest|weekly|monthly|special offer|% off|sale|promo|discount|deal|marketing|view (this )?(email )?in (your )?browser|manage (your )?(email )?preferences)/i;
- const SUPH=/\b(invoice|quote|quotation|order|delivery|supplier|purchase order|po#|shipment|stock|pricing)\b/i;
+ const RCPT=/(receipt|invoice|payment|payout|paid|order confirmation|your order|billing|statement|subscription renewal)/i;
+ const SUBS=/(unsubscribe|newsletter|digest|special offer|% off|\bsale\b|promo|discount|\bdeals?\b|marketing|view (this )?(email )?in (your )?browser|manage (your )?(email )?preferences)/i;
+ const SUPH=/\b(invoice|quote|quotation|order|delivery|supplier|purchase order|shipment|pricing)\b/i;
+ const SYS_L=/(no[-_.]?reply|do[-_.]?not[-_.]?reply|donotreply|notifications?|alerts?|security|verification|mailer-daemon|postmaster|account-?protection)/i;
+ const SYS_T=/(security alert|verification code|sign[- ]in|new login|password|one[- ]time|confirm your (email|account))/i;
  function folderOf(m){const o=ov()[sender(m)];if(o&&FOLDERS.includes(o))return o;
   let sc;try{sc=score(m).n}catch(e){sc=0}if(sc>=2)return 'Priority';
-  const t=((m.subj||'')+' '+(m.sum||'')),loc=sender(m).split('@')[0];
-  if(isAuto(m)){if(RCPT.test(t)||/(billing|invoice|receipt|payments?|orders?)/.test(loc))return 'Receipts & Payments';if(m.bulk||m.list_unsub||SUBS.test(t)||/(news|marketing|promo|offers?|deals?|digest)/.test(loc))return 'Subscriptions';return 'Notifications'}
+  const em=sender(m),loc=em.split('@')[0],dom=em.split('@')[1]||'',t=((m.subj||'')+' '+(m.sum||'')),sub=m.subj||'';let auto=false;try{auto=isAuto(m)}catch(e){}
+  const noreply=/(no[-_.]?reply|do[-_.]?not[-_.]?reply|donotreply)/i.test(loc);
+  if(/(^|\.)airbnb\.com$/.test(dom)){return /payout/i.test(sub)?'Receipts & Payments':'Clients'}   // guest and booking messages
+  if(!auto&&!noreply&&SUPH.test(t))return 'Suppliers';
+  if(/^\s*(re|fwd?)\s*:/i.test(sub)&&!noreply)return 'Clients';    // a person replying, even from a role address
+  if(RCPT.test(sub)||/(billing|invoices?|receipts?|payments?)/.test(loc))return 'Receipts & Payments';
+  if(auto||noreply){if(SUBS.test(t)||m.bulk||m.list_unsub)return 'Subscriptions';if(SYS_L.test(loc)||SYS_T.test(sub))return 'Notifications';return 'Subscriptions'}
+  if(m.bulk||m.list_unsub)return 'Subscriptions';
   if(SUPH.test(t))return 'Suppliers';
   if(isDirect(m))return 'Clients';return 'Other'}
  const counts=()=>{const c={};FOLDERS.forEach(f=>c[f]=0);D.mail.forEach(m=>c[folderOf(m)]++);return c};
