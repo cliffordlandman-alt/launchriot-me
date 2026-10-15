@@ -50,15 +50,45 @@
   try{const r=await api('/whatsapp/chats/'+encodeURIComponent(id)+'/messages?limit=100');if(!S.open||S.open.id!==id)return;S.msgs=Array.isArray(r)?r:(r&&r.messages)||[];S.msgErr=''}catch(e){if(!S.open||S.open.id!==id)return;S.msgErr='Could not load messages ('+(e.status||'offline')+').'}
   paintMsgs()}
  function paintMsgs(){const el=document.getElementById('wa-read');if(!el)return;
+  if(document.activeElement&&document.activeElement.id==='wa-dt'&&S.open)return;
   if(!S.open){el.innerHTML='';return}
-  const m=S.msgs;el.innerHTML='<div class="card" style="margin-top:10px"><div class="toolbar"><button class="btn sm dark" onclick="waBack()">← Back to chats</button><b>'+E(S.open.name||'')+'</b></div>'+(S.msgErr?'<p style="color:#b00">'+E(S.msgErr)+'</p>':'')+(m===null&&!S.msgErr?'<p class="muted">Loading…</p>':'<div class="wa-msgs" id="wa-msgs">'+((m||[]).length?m.map(x=>'<div class="wa-m'+(x.from_me?' me':'')+'">'+(x.from_me?'':(x.sender?'<small>'+E(x.sender)+'</small>':''))+E(x.text||'')+'<small>'+E(dt(x.at))+' (Dubai)</small></div>').join(''):'<span class="muted">No messages.</span>')+'</div>')+'<p class="muted" style="margin-top:8px">Read-only. There is no send button; replies are drafts for now.</p></div>';
+  const m=S.msgs;el.innerHTML='<div class="card" style="margin-top:10px"><div class="toolbar"><button class="btn sm dark" onclick="waBack()">← Back to chats</button><b>'+E(S.open.name||'')+'</b></div>'+(S.msgErr?'<p style="color:#b00">'+E(S.msgErr)+'</p>':'')+(m===null&&!S.msgErr?'<p class="muted">Loading…</p>':'<div class="wa-msgs" id="wa-msgs">'+((m||[]).length?m.map(x=>'<div class="wa-m'+(x.from_me?' me':'')+'">'+(x.from_me?'':(x.sender?'<small>'+E(x.sender)+'</small>':''))+E(x.text||'')+'<small>'+E(dt(x.at))+' (Dubai)</small></div>').join(''):'<span class="muted">No messages.</span>')+'</div>')+draftUi()+'<p class="muted" style="margin-top:8px">Read-only. There is no send button; replies are drafts for now.</p></div>';
   const b=document.getElementById('wa-msgs');if(b)b.scrollTop=b.scrollHeight;
   const l=document.getElementById('wa-list');if(l)l.style.display='none'}
- window.waBack=()=>{S.open=null;S.msgs=null;paintMsgs();const l=document.getElementById('wa-list');if(l)l.style.display=''};
+ window.waBack=()=>{S.draftOpen=false;S.open=null;S.msgs=null;paintMsgs();const l=document.getElementById('wa-list');if(l)l.style.display=''};
  window.waFilter=f=>{S.filter=f;S.chats=null;S.open=null;render()};
- document.addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('.wa-chat[data-cid]');if(!c)return;const x=(S.chats||[]).find(y=>String(y.id)===c.getAttribute('data-cid'));if(x){S.open=x;loadMsgs()}});
+ document.addEventListener('click',e=>{const c=e.target.closest&&e.target.closest('.wa-chat[data-cid]');if(!c)return;const x=(S.chats||[]).find(y=>String(y.id)===c.getAttribute('data-cid'));if(x){S.draftOpen=false;S.open=x;loadMsgs()}});
  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches&&e.target.matches('.wa-chat[data-cid]'))e.target.click()});
- // ---- hooks ----
+ 
+// ---- drafts (local only, never sent) ----
+const DK='lr-wa-drafts';
+const draftsAll=()=>{try{return JSON.parse(localStorage.getItem(DK)||'[]')}catch(e){return[]}};
+function suggest(msgs,chat){const inc=(msgs||[]).filter(x=>!x.from_me&&x.text);const last=inc.slice(-3);const txt=last.map(x=>x.text).join(' ').toLowerCase();
+ const who=chat&&!chat.is_group&&chat.name&&!/^[+\d\s()-]+$/.test(chat.name)?String(chat.name).trim().split(/\s+/)[0]:'';
+ let r='Hi'+(who?' '+who:'')+', thank you for your message. ';
+ if(!last.length)return r+'How can I help?';
+ const q=/\?/.test(txt)||/\b(can you|could you|do you|are you|when|where|how much|how many|what)\b/.test(txt);
+ const price=/\b(price|quote|quotation|cost|how much|rate|estimate|invoice|payment|pay)\b/.test(txt);
+ const when=/\b(today|tomorrow|tonight|asap|urgent|schedule|appointment|available|availability|time|visit)\b/.test(txt);
+ const pic=/\b(photo|picture|pic|image|video|document|attach)\b/.test(txt);
+ if(price)r+='I will check the details and come back to you with the figures shortly. ';
+ else if(when)r+='Let me check my diary and confirm a time with you. ';
+ else if(q)r+='I will look into this and get back to you. ';
+ else r+='I have noted it. ';
+ const need=[];if(price||q)need.push('the quantity or scope');if(when)need.push('your preferred date and time');if(price||when)need.push('the location');if(pic)need.push('a photo or document if you have one');
+ if(need.length)r+='Could you please share '+need.slice(0,3).join(', ').replace(/, ([^,]*)$/,' and $1')+'? ';
+ return (r+'Thank you.').replace(/\s+/g,' ').trim()}
+function draftUi(){if(!S.draftOpen)return '<div class="toolbar" style="margin-top:8px"><button class="btn sm" onclick="waDraftOpen()">Draft a reply</button><span class="muted">Draft only, not sent.</span></div>';
+ return '<div class="wa-note" style="margin-top:8px"><b>Draft only, not sent.</b> A suggested reply from the last messages. Edit it, then save it to your Drafts page. Nothing is sent from LaunchRiot.</div><textarea id="wa-dt" rows="4" oninput="waDT(this.value)">'+E(S.draftText||'')+'</textarea><div class="toolbar" style="margin-top:8px"><button class="btn sm" onclick="waDraftSave()">Save draft</button><button class="btn sm dark" onclick="waDraftCancel()">Discard</button></div>'}
+window.waDraftOpen=()=>{S.draftText=suggest(S.msgs,S.open);S.draftOpen=true;S.msgs&&paintMsgs()};
+window.waDT=v=>{S.draftText=v};
+window.waDraftCancel=()=>{S.draftOpen=false;paintMsgs()};
+window.waDraftSave=()=>{const t=String(S.draftText||'').trim();if(!t||!S.open)return;const L=draftsAll();
+ L.unshift({id:'wd'+Date.now(),chat_id:S.open.id,account:S.open.account||'',name:S.open.name||'',text:t,at:new Date().toISOString()});
+ try{localStorage.setItem(DK,JSON.stringify(L.slice(0,200)))}catch(e){}
+ S.draftOpen=false;paintMsgs();if(typeof toast==='function')toast('Draft saved on the Drafts page. Nothing was sent.')};
+window.__wa={open:c=>{S.draftOpen=false;S.open=c;S.msgs=null;if(location.hash==='#/app/whatsapp')render();else location.hash='#/app/whatsapp'}};
+// ---- hooks ----
  const _view=view;
  view=function(t){const h=_view(t);if(!active())return h;
   if(t==='connections'&&typeof h==='string'){const re=/<div class="card vivid" style="grid-column:1\/-1"><b>WhatsApp<\/b>[\s\S]*?Open WhatsApp Web \(Business\)<\/a><\/div><\/div>/;
