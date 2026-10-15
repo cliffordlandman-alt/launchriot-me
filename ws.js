@@ -7,7 +7,7 @@ let D=JSON.parse(localStorage.getItem(KEY)||'null');if(!D){D=emptySeed();localSt
 function save(){localStorage.setItem(KEY,JSON.stringify(D))}
 function reset(){if(!confirm('Clear all data saved in this browser?'))return;D=emptySeed();save();toast('All data cleared');render()}
 window.clearAll=reset;
-let role=localStorage.getItem(KEY+'role')||'Founder';
+let role='Founder';
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2600)}
 function logSent(what){D.sent.unshift({t:new Date().toLocaleString(),what});save()}
 const SRC={gcal:'Google Calendar',gmail:'Gmail',outlook:'Outlook / Microsoft 365',wa:'WhatsApp Business',zcrm:'Zoho CRM',zbooks:'Zoho Books',zmail:'Zoho Mail'};
@@ -26,7 +26,7 @@ const sv=x=>x==null||x===''?'—':x;
 let tmr=[];function stopFx(){tmr.forEach(clearTimeout);tmr.forEach(clearInterval);tmr=[]}
 function typeChat(el,list){if(!el)return;el.innerHTML='';let i=0;const step=()=>{if(i>=list.length)return;const [c,t]=list[i++];const d=document.createElement('div');d.className='msg '+c;d.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';el.appendChild(d);tmr.push(setTimeout(()=>{d.textContent=t;tmr.push(setTimeout(step,700))},700))};step()}
 // Tabs: [key,label,roles] M=Founder, A=Executive Assistant, S=Sales Manager
-const TABS=[['dashboard','Dashboard','MAS'],['inbox','Inbox','MA'],['whatsapp','WhatsApp','MA'],['calendar','Calendar','MAS'],['sales','Sales pipeline','MS'],['customers','Customers & dealers','MAS'],['service','Service & dispatch','MA'],['parts','Parts & stock','MA'],['contracts','Service contracts','MS'],['market','Market brief','MS'],['tasks','Tasks','MAS'],['ai','AI staff','MAS'],['connections','Connections','MA'],['outbox','Outbox','MAS']];
+const TABS=[['dashboard','Dashboard','MAS'],['inbox','Inbox','MA'],['whatsapp','WhatsApp','MA'],['calendar','Calendar','MAS'],['tasks','Tasks','MAS'],['connections','Connections','MA']];
 const ROLES={'Founder':'M','Service Manager':'A','Sales Manager':'S'};
 const allowed=t=>t[2].includes(ROLES[role]);
 function agendaList(d){const ev=D.cal.filter(e=>e.d==d&&(D.con[e.src]||e.src=='manual')).sort((a,b)=>a.t<b.t?-1:1);return ev.length?tbl(['Time','Meeting','From'],ev.map(e=>[e.t,esc(e.title),SRC[e.src]||'Added manually'])):'<p class="muted">No meetings.</p>'}
@@ -94,6 +94,6 @@ const LR='<span class="lr-logo" aria-label="LaunchRiot"><span class="lr-ico"><sv
 const CB=`<img src="launchriot-logo.png" alt="LaunchRiot" style="height:40px;width:auto"><span>Clifford's workspace<small>Founder</small></span>`;
 function render(){stopFx();const h=location.hash.replace(/^#\/?/,'').split('/'),m=document.getElementById('main');scrollTo(0,0);document.getElementById('brand').innerHTML=CB;
 let t=h[0]=='app'&&h[1]||'dashboard';const tabs=TABS.filter(allowed);if(!tabs.find(x=>x[0]==t))t='dashboard';
-m.innerHTML=`<div class="app"><aside class="side">${tabs.map(x=>`<a href="#/app/${x[0]}" class="${x[0]==t?'on':''}">${x[1]}</a>`).join('')}</aside><section class="content"><div class="toolbar"><span class="tag">Saved in this browser</span><b>View as:</b><select onchange="setRole(this.value)">${Object.keys(ROLES).map(r=>`<option ${r==role?'selected':''}>${r}</option>`).join('')}</select><button class="btn sm dark" onclick="reset()">Clear all data</button></div>${view(t)}</section></div>`;
+m.innerHTML=`<div class="app"><aside class="side">${tabs.map(x=>`<a href="#/app/${x[0]}" class="${x[0]==t?'on':''}">${x[1]}</a>`).join('')}</aside><section class="content"><div class="toolbar"><span class="tag">Saved in this browser</span><button class="btn sm dark" onclick="reset()">Clear all data</button></div>${view(t)}</section></div>`;
 document.querySelectorAll('.tchat').forEach((el,i)=>tmr.push(setTimeout(()=>typeChat(el,[['in',el.dataset.q],['bot',el.dataset.a]]),i*900)))}
 addEventListener('hashchange',render);render();
