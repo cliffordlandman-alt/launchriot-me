@@ -9,10 +9,25 @@ D.settings=D.settings||{notify:{brief:true,urgent:true,friday:true,approvals:tru
 const greet=()=>{const h=+new Date().toLocaleString('en-GB',{timeZone:'Asia/Dubai',hour:'2-digit',hour12:false});return h<12?'Good morning':h<17?'Good afternoon':'Good evening'};
 const first=()=>esc((D.profile.name||'Clifford').split(' ')[0]);
 // ---- email triage ----
+const AUTO_RE=/(^|[^a-z])(no[-_.]?reply|do[-_.]?not[-_.]?reply|donotreply|noreply|mailer-daemon|postmaster|notifications?|notify|alerts?|newsletters?|news|updates?|marketing|promo(tions?)?|offers?|deals?|digest|billing|invoices?|receipts?|orders?|support|info|hello|team|admin|system|automated|bounce|ceo|founder|sales|hi|hey|contact|press|careers|jobs|accounts|service|help|community|welcome|feedback|survey)([^a-z]|$)/;
+const AUTO_DOM=/@([a-z0-9-]+\.)*(airbnb|medallia|instagram|facebook|microsoft|google|apple|amazon|uber|booking|netflix|spotify|youtube|tiktok|dropbox|atlassian|figma|canva|openai|mailchimp|sendgrid|mailgun|amazonses|substack|linkedin|facebookmail|github|slack|stripe|paypal|shopify|notion|zoom|calendly|eventbrite|mcsv|rsgsv|constantcontact|hubspot|intercom|mandrillapp|sparkpostmail|e|em|news|marketing|mailer|bounce|mg|email)\.[a-z.]+$/;
+const AUTO_TXT=/(unsubscribe|view (this )?(email )?in (your )?browser|manage (your )?(email )?preferences|payment (received|confirmation|successful)|receipt for|your (receipt|invoice|order|statement|payment|subscription)|order confirmation|has been shipped|security alert|verification code|one[- ]time (code|password)|password reset|^welcome to|newsletter|weekly digest|daily digest|special offer|% off|limited time|sale ends|free trial|you('| a)re receiving this|do not reply|automated (message|email))/;
+function isAuto(m){const f=(m.from||'').toLowerCase(),em=((f.match(/<([^>]+)>/)||[])[1]||f).trim(),loc=em.split('@')[0],t=((m.subj||'')+' '+(m.sum||'')).toLowerCase();
+ const dn=(f.split('<')[0]||'').replace(/[0-9]+/g,' ');
+ return !!(m.bulk||m.list_unsub||AUTO_RE.test(loc.replace(/[0-9]+/g,''))||(f.includes('<')&&AUTO_RE.test(dn))||AUTO_DOM.test(em)||AUTO_TXT.test(t))}
+function isDirect(m){if(m.is_cc)return false;const me=[(m.account||'').toLowerCase()].concat((D.profile&&D.profile.email?[String(D.profile.email).toLowerCase()]:[])).filter(Boolean),to=(m.to||[]).map(x=>String(x).toLowerCase()),cc=(m.cc||[]).map(x=>String(x).toLowerCase());
+ if(me.some(a=>cc.some(c=>c.includes(a)))&&!to.some(x=>me.some(a=>x.includes(a))))return false;if(to.length>3)return false;return to.length?to.some(x=>me.some(a=>x.includes(a))):true}
 function score(m){const s=D.settings,f=(m.from||'').toLowerCase(),t=((m.subj||'')+' '+(m.sum||'')).toLowerCase();let n=0,why=[];
- if(s.vip.some(v=>v&&f.includes(v.toLowerCase()))){n+=3;why.push('VIP')}
- const kw=s.keywords.filter(k=>k&&t.includes(k.toLowerCase()));if(kw.length){n+=2;why.push('“'+kw[0]+'”')}
- if(m.unread){n+=1;why.push('Unread')}if(+m.importance>=60){n+=2}(m.reasons||[]).slice(0,3).forEach(x=>why.push(esc(x)));if(m.needs_reply){n+=2;why.push('Reply needed')}if(m.pri=='High'){n+=2;why.push('High')}return {n,why}}
+ // Unread alone never raises priority; API importance/priority are only supporting signals (never enough alone).
+ if((s.vip||[]).some(v=>v&&f.includes(v.toLowerCase()))){n+=3;why.push('VIP')}
+ if(isAuto(m)&&!(m.needs_reply&&/^re:/i.test(m.subj||'')&&!AUTO_TXT.test(t))){return {n,why:n?why:['Automated / bulk']}}
+ const kw=(s.keywords||[]).filter(k=>k&&t.includes(k.toLowerCase()));if(kw.length){n+=2;why.push('“'+kw[0]+'”')}
+ if(m.needs_reply){n+=2;why.push('Reply needed')}
+ if(isDirect(m)){n+=2;why.push('Direct from a person')}else if(m.is_cc){why.push('CC')}
+ if(+m.importance>=60||m.pri=='High'){n+=1}
+ (m.reasons||[]).filter(x=>!/addressed to|^unread$/i.test(x)).slice(0,2).forEach(x=>why.push(esc(x)));
+ if(m.is_cc&&!(n>=3)){n=Math.min(n,1)}
+ return {n,why}}
 const MSRC={gmail:'Gmail',outlook:'Outlook',zmail:'Zoho Mail',manual:'Added'};
 function mailRow(m){const sc=score(m);return `<div class="card mail ${sc.n>=2?'hot':''}"><div class="mh"><b>${esc(m.subj||'(no subject)')}</b><span class="src s-${m.src}">${MSRC[m.src]||m.src}</span></div><div class="muted">${esc(m.from||'')}${m.unread?' · <b>unread</b>':''}${m.account?` · <span class="chip2" style="font-size:11px">${esc(m.account)}</span>`:''}</div>${m.sum?`<p>${esc(m.sum)}</p>`:''}<div class="chips2">${sc.why.map(w=>`<span class="chip2">${w}</span>`).join('')}</div>${m.st=='Pending'?`<div class="toolbar" style="margin-top:8px"><button class="btn sm" onclick="dismiss('mail','${m.id}')">Mark handled</button></div>`:`<p>${pill(m.st=='Dismissed'?'Handled':m.st)}</p>`}</div>`}
 // ---- Friday planner ----
