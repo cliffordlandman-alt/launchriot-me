@@ -54,6 +54,7 @@
   if(!S.open){el.innerHTML='';return}
   const m=S.msgs;el.innerHTML='<div class="card" style="margin-top:10px"><div class="toolbar"><button class="btn sm dark" onclick="waBack()">← Back to chats</button><b>'+E(S.open.name||'')+'</b></div>'+(S.msgErr?'<p style="color:#b00">'+E(S.msgErr)+'</p>':'')+(m===null&&!S.msgErr?'<p class="muted">Loading…</p>':'<div class="wa-msgs" id="wa-msgs">'+((m||[]).length?m.map(x=>'<div class="wa-m'+(x.from_me?' me':'')+'">'+(x.from_me?'':(x.sender?'<small>'+E(x.sender)+'</small>':''))+E(x.text||'')+'<small>'+E(dt(x.at))+' (Dubai)</small></div>').join(''):'<span class="muted">No messages.</span>')+'</div>')+draftUi()+'<p class="muted" style="margin-top:8px">Read-only. There is no send button; replies are drafts for now.</p></div>';
   const b=document.getElementById('wa-msgs');if(b)b.scrollTop=b.scrollHeight;
+  if(window.__saPaint&&S.open&&S.msgs)try{window.__saPaint(S.open,S.msgs)}catch(e){}
   const l=document.getElementById('wa-list');if(l)l.style.display='none'}
  window.waBack=()=>{S.draftOpen=false;S.open=null;S.msgs=null;paintMsgs();const l=document.getElementById('wa-list');if(l)l.style.display=''};
  window.waFilter=f=>{S.filter=f;S.chats=null;S.open=null;render()};
